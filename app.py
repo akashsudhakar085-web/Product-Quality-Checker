@@ -1,18 +1,32 @@
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
 from flask import Flask, request, jsonify
+from tensorflow.keras.applications.mobilenet import MobileNet, preprocess_input, decode_predictions
+from tensorflow.keras.preprocessing import image
+import numpy as np
 
 app = Flask(__name__)
 
-@app.route('/upload', methods=['POST'])
-def upload():
-    file = request.files.get('image')
-    if not file:
-        return jsonify({"error": "No file uploaded"}), 400
+model = MobileNet(weights='imagenet')
 
-    # For now, just return success without saving
-    return jsonify({
-        "filename": file.filename,
-        "message": "File received successfully!"
-    })
+@app.route('/upload', methods=['POST'])
+def upload_image():
+    if 'image' not in request.files:
+        return jsonify({'error': 'No image provided'}), 400
+    img_file = request.files['image']
+
+    img = image.load_img(img_file, target_size=(224, 224))
+    img_array = image.img_to_array(img)
+    img_array = np.expand_dims(img_array, axis=0)
+    img_array = preprocess_input(img_array)
+
+    preds = model.predict(img_array)
+    decoded = decode_predictions(preds, top=3)[0]
+
+    results = [{'label': label, 'description': desc, 'probability': float(prob)} for (label, desc, prob) in decoded]
+
+    return jsonify({'filename': img_file.filename, 'predictions': results})
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=10000)
